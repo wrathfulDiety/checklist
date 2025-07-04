@@ -1,0 +1,201 @@
+# Phase 13.4 – Ecommerce-Specific Tests
+
+## Objective
+Identify and exploit vulnerabilities unique to ecommerce applications related to price manipulation, promo codes, cart/order tampering, and payment workflows.
+
+---
+
+## Steps
+
+### 1. Test Price Manipulation
+
+- **Goal:** Ensure the price parameter cannot be altered client-side or in transit to pay less than intended.
+
+- **How to test:**
+  1. Use Burp Suite Proxy to intercept the HTTP request during checkout/payment.
+  2. Locate parameters related to price, total amount, or item cost (e.g., `price=1000`, `amount=1000`).
+  3. Modify the parameter to a lower value (e.g., `price=1`) before forwarding.
+  4. Observe if the server accepts the modified price and processes the order at the tampered cost.
+  5. Try variations such as:
+     - Negative numbers (e.g., `price=-100`)
+     - Floating point precision (e.g., `price=0.01`)
+     - String injection (e.g., `price=0 OR 1=1`)
+  6. Check server response and order confirmation page/emails.
+
+- **Advanced:**
+  - Use automated Burp Intruder to fuzz price parameters with boundary and injection payloads.
+  - Test JSON API endpoints with altered pricing in raw JSON bodies.
+  - Test race conditions by sending simultaneous requests with altered prices.
+
+---
+
+### 2. Attempt Promo/Gift Card Abuse
+
+- **Goal:** Find ways to bypass promo code restrictions or brute force promo/gift card codes.
+
+- **How to test:**
+  1. Intercept promo code redemption requests via Burp Proxy.
+  2. Modify promo code value to test:
+     - Expired or invalid codes.
+     - Known valid codes but multiple usages.
+  3. Automate brute forcing promo codes:
+     - Use Burp Intruder or custom scripts.
+     - Use wordlists (common promo codes, patterns like `DISCOUNT[0-9]{4}`).
+  4. Attempt to redeem promo codes multiple times after order cancellation.
+  5. Try applying multiple promo codes in one transaction (if allowed).
+  6. Modify promo code discount values in requests to test tampering (e.g., increase discount from 10% to 100%).
+
+- **Advanced:**
+  - Test timing attacks where code validity checks are done asynchronously.
+  - Test race conditions by submitting promo codes rapidly in parallel requests.
+
+---
+
+### 3. Cart and Inventory Manipulation
+
+- **Goal:** Check if it is possible to modify cart contents or inventory counts unauthorized.
+
+- **How to test:**
+  1. Intercept add-to-cart, update-cart, and remove-from-cart HTTP requests.
+  2. Modify parameters like `item_id`, `quantity`, `price`, or `discount`.
+  3. Attempt to add items beyond stock limits.
+  4. Try editing another user's cart by changing session or user identifiers in request parameters.
+  5. Attempt to view/edit orders of other users by modifying order IDs or user tokens.
+  6. Test if server enforces server-side validation on quantity and price.
+
+- **Advanced:**
+  - Test for Insecure Direct Object References (IDOR) in cart/order endpoints.
+  - Test replay attacks on cart modification APIs.
+  - Use Burp Repeater for step-by-step manipulation and observing effects.
+
+---
+
+### 4. Payment Gateway & Checkout Flow Analysis
+
+- **Goal:** Identify injection and tampering vulnerabilities in the payment process.
+
+- **How to test:**
+  1. Identify payment-related parameters (e.g., credit card data, amount, currency).
+  2. Attempt parameter tampering during payment authorization (e.g., changing currency or amount).
+  3. Test for injection vulnerabilities in payment fields (SQLi, XSS).
+  4. Analyze payment gateway integration for data leakage or improper validation.
+  5. Check if sensitive data is sent unencrypted or exposed in URL parameters.
+  6. Attempt to intercept and replay payment confirmation messages.
+
+- **Advanced:**
+  - Use Burp Collaborator to test out-of-band injection points during payment.
+  - Test payment callback endpoints for unauthenticated access or manipulation.
+  - Verify if the application checks the payment gateway's digital signature or token.
+
+---
+
+### 5. CSRF & Business Logic Flaws
+
+- **Goal:** Ensure state-changing actions like order placement and promo application are protected against CSRF and business logic abuse.
+
+- **How to test:**
+  1. Capture state-changing POST requests (order submit, promo apply).
+  2. Check for presence of CSRF tokens.
+  3. Attempt replaying the requests without CSRF tokens or with stale tokens.
+  4. Test if CSRF tokens are single-use or reusable.
+  5. Attempt business logic abuse:
+     - Bypass restrictions on delivery dates/times.
+     - Place orders with invalid or manipulated parameters.
+     - Test order cancellation/refund logic for inconsistencies.
+     - Attempt multiple overlapping promo codes.
+  6. Test automated booking abuse (e.g., rapid booking of tickets).
+
+- **Advanced:**
+  - Use Burp's CSRF PoC generator to test token validation.
+  - Automate order placement to test business rule enforcement.
+  - Use scripts to simulate concurrent requests testing race conditions.
+
+---
+
+### 6. Additional Tests Specific to CMS-based Ecommerce (e.g., WooCommerce, Magento)
+
+- **Goal:** Exploit known default files, configurations, and debug information leakage.
+
+- **How to test:**
+  1. Test access to debug log files like `debug.log`, `.log` files, or backup files.
+  2. Test default admin URLs and credentials.
+  3. Check for outdated plugins/modules known to have vulnerabilities.
+  4. Test for file upload in admin or user areas allowing malware upload.
+
+- **Advanced:**
+  - Search GitHub or exploit-db for public exploits of detected plugins.
+  - Use CMSMap or WPScan for automated enumeration and exploitation.
+
+---
+
+### 7. Two-Factor Authentication (2FA) Checks
+
+- **Goal:** Validate that sensitive changes (email, phone) are protected by 2FA.
+
+- **How to test:**
+  1. Change email or phone number in profile settings.
+  2. Attempt to bypass 2FA or OTP during these changes by manipulating request parameters.
+  3. Test for any session fixation or token reuse during 2FA process.
+  4. Attempt replay or reuse of 2FA tokens.
+  5. Check if 2FA can be disabled without proper authentication.
+
+- **Advanced:**
+  - Test for race conditions during 2FA challenge.
+  - Use intercepting proxy to replay or modify 2FA challenges and responses.
+
+---
+
+## Pass Criteria
+
+- All business logic enforces strict validation of prices, promo codes, cart contents, and payment parameters on the server side.
+- No unauthorized tampering or manipulation is accepted.
+- Proper authentication and authorization enforced at every step.
+- CSRF protections are in place and effective.
+- 2FA protections are enforced for sensitive account changes.
+- Debug and sensitive files are not publicly accessible.
+- Payment gateway integrations validate all inputs and callbacks.
+
+---
+
+## Fail Criteria
+
+- Client-side price manipulation leads to unauthorized discounts.
+- Promo codes can be brute forced, reused, or modified improperly.
+- Cart/order IDORs allow manipulation or data leakage.
+- Injection or tampering in payment process results in invalid transactions.
+- Lack of CSRF tokens or weak protections on state-changing requests.
+- Sensitive debug or configuration files accessible publicly.
+- 2FA bypass or token reuse vulnerabilities.
+
+---
+
+## Screenshots to Collect
+
+- Modified price parameters and server response showing acceptance or rejection.
+- Burp Intruder attack logs for promo code brute forcing.
+- Requests showing unauthorized cart or order manipulation.
+- Payment requests before and after tampering.
+- Evidence of missing CSRF tokens or successful CSRF attack.
+- Debug files accessed publicly.
+- 2FA challenge and bypass attempts captured.
+
+---
+
+## Tools Recommended
+
+- Burp Suite (Proxy, Intruder, Repeater, Collaborator)
+- CMSMap, WPScan (for CMS-specific checks)
+- Custom scripts (Python/JS) for automation and brute forcing
+- OAuth2 Proxy, JWT tools for related auth tests
+
+---
+
+## References
+
+- OWASP Testing Guide - [Ecommerce Testing](https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/08-Testing_for_Business_Logic_Vulnerabilities)
+- 0xpatrik Subdomain Enumeration Workflow (for recon)
+- Burp Suite Official Documentation
+- CVE databases for ecommerce platforms/plugins
+
+---
+
