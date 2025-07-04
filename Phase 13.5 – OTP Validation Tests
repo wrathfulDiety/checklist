@@ -1,233 +1,200 @@
 # Phase 13.5 – OTP Validation Tests
 
 ## Objective
-Test the One-Time Password (OTP) mechanism for vulnerabilities such as brute force, reuse, bypass, information leakage, and predictability.
+Test One-Time Password (OTP) implementations for weaknesses such as brute force susceptibility, replay attacks, bypasses, predictable patterns, and secure handling to ensure the robustness of multi-factor authentication and verification flows.
 
 ---
 
-## 1. Check if OTP can be reused
+## Steps
 
-### Steps
+### 1. Test OTP Brute Force Protection
 
-1. **Trigger an OTP generation**  
-   - Navigate to the OTP entry point (e.g., login with OTP, password reset via OTP, or two-factor authentication page).  
-   - Enter your valid username or phone/email to request an OTP.  
-   - Intercept the OTP delivery request/response with Burp Suite Proxy or your preferred intercepting proxy.
+- **Goal:** Verify if OTP input is protected against brute force attempts with proper rate limiting and lockout.
 
-2. **Capture and save the OTP**  
-   - Record the OTP from the response or intercept the SMS/email if accessible.  
-   - Note the timestamp of OTP issuance.
+- **How to test:**
+  1. Identify the OTP submission endpoint (e.g., `/verify-otp`, `/validate-code`).
+  2. Using Burp Suite Intruder or a custom script, automate submitting a large set of OTP guesses for a valid user/session.
+     - Use common OTP formats (e.g., 6-digit numeric, alphanumeric).
+     - Include boundary cases: `000000`, `999999`, `123456`, `111111`.
+  3. Observe server responses:
+     - Look for rate limiting responses (HTTP 429 or custom messages).
+     - Check if account gets temporarily or permanently locked after multiple failed attempts.
+     - Check response time delays after failed attempts (e.g., exponential backoff).
+  4. Repeat with different user accounts to test global rate limiting or per-user rate limiting.
 
-3. **Use the OTP to authenticate successfully**  
-   - Submit the OTP as requested. Confirm successful authentication or action.
-
-4. **Immediately reuse the same OTP**  
-   - Without requesting a new OTP, resend the same OTP value in the OTP submission request.  
-   - Intercept the request and modify the OTP parameter if necessary.
-
-5. **Observe the response**  
-   - Check if the server allows reuse (accepts the same OTP again).  
-   - Successful reuse indicates weak session binding or improper OTP invalidation.
-
-### Pass Criteria  
-The OTP is invalidated immediately after first successful use and cannot be reused.
-
-### Fail Criteria  
-Server accepts the same OTP multiple times allowing repeated access.
-
-### Screenshot  
-- OTP request and response containing the OTP.  
-- Successful first OTP usage response.  
-- Second OTP submission showing acceptance or rejection.
+- **Advanced:**
+  - Bypass IP-based rate limits by rotating proxies or Tor exit nodes.
+  - Try timing attacks to detect subtle server response delays.
 
 ---
 
-## 2. Brute force OTP (No or weak rate limiting)
+### 2. Check OTP Expiry Enforcement
 
-### Steps
+- **Goal:** Verify that OTPs expire correctly after a predefined time window.
 
-1. **Identify the OTP submission endpoint**  
-   - Use Burp Suite Proxy to capture the request submitting the OTP code.
+- **How to test:**
+  1. Trigger an OTP generation (e.g., login, password reset).
+  2. Wait beyond the expected expiry time (e.g., 5-10 minutes).
+  3. Attempt to use the expired OTP.
+  4. Confirm the server rejects expired OTP with proper error message.
+  5. Test boundary conditions by submitting OTP just before expiry.
 
-2. **Prepare a list of possible OTPs**  
-   - Generate a numeric wordlist based on OTP format (e.g., 4-6 digits):  
-     ```
-     0000  
-     0001  
-     0002  
-     ...  
-     9999  
-     ```
-   - Use tools like Burp Intruder, Hydra, or a custom Python script to automate attempts.
-
-3. **Configure Burp Intruder**  
-   - Set the position to the OTP parameter in the request.  
-   - Use the numeric payload list as the attack payloads.
-
-4. **Configure rate limiting bypass or evasion (optional)**  
-   - Use Intruder throttling options to avoid detection, or test with bursts to check for lockout.  
-   - Try adding random headers or different IPs (if possible) to evade simple protections.
-
-5. **Start the attack and monitor responses**  
-   - Analyze response differences to identify valid OTP submission (e.g., different status code, message, or redirect).  
-   - If no rate limiting exists, attack will continue without errors or lockouts.
-
-### Pass Criteria  
-OTP submission is protected by strict rate limiting, IP blocking, account lockout, or progressive delays.
-
-### Fail Criteria  
-No rate limiting or lockout, allowing unlimited OTP attempts.
-
-### Screenshot  
-- Burp Intruder attack configuration showing payload position and list.  
-- Evidence of no blocking or lockout in responses after multiple requests.  
-- Successful brute force attempt.
+- **Advanced:**
+  - Modify system clocks (if testing locally) or intercept OTP generation to test time skew vulnerabilities.
+  - Replay captured OTPs multiple times within and after expiry period.
 
 ---
 
-## 3. Check OTP expiry enforcement
+### 3. Test OTP Replay and Reuse
 
-### Steps
+- **Goal:** Ensure OTPs are one-time use and cannot be reused across multiple requests or sessions.
 
-1. **Request an OTP and note timestamp**  
-   - As in step 1, capture the OTP and the time it was issued.
+- **How to test:**
+  1. Submit a valid OTP and complete the verification process successfully.
+  2. Attempt to reuse the same OTP again on the same or different session.
+  3. Verify the server rejects reused OTPs.
+  4. Test if OTPs can be used in other user sessions (session fixation or user ID tampering).
 
-2. **Wait beyond the expected expiry time**  
-   - Typical OTP expiry is 2-5 minutes; wait accordingly.
-
-3. **Attempt to reuse or submit the OTP after expiry**  
-   - Use Burp to resend the OTP submission request with the expired OTP.
-
-4. **Observe response**  
-   - Server should reject the OTP due to expiry with an appropriate message or error code.
-
-### Pass Criteria  
-Expired OTPs are rejected and cannot be used.
-
-### Fail Criteria  
-Expired OTPs are accepted, allowing unauthorized access.
-
-### Screenshot  
-- OTP request and response with timestamp.  
-- OTP submission request with expired OTP.  
-- Server response indicating rejection or acceptance.
+- **Advanced:**
+  - Intercept and replay OTP submission requests with Burp Repeater.
+  - Modify session tokens or cookies to check if OTP reuse can bypass session checks.
 
 ---
 
-## 4. Test OTP bypass via parameter tampering or logical flaws
+### 4. Verify OTP Binding to User and Session
 
-### Steps
+- **Goal:** Confirm OTP is bound to a specific user/session and cannot be used for unauthorized accounts.
 
-1. **Analyze OTP verification request parameters**  
-   - Intercept the request with Burp Proxy and note parameters like `user_id`, `session_id`, `otp_code`, `token`, etc.
+- **How to test:**
+  1. Generate OTP for user A.
+  2. Attempt to submit OTP for user B.
+  3. Confirm server rejects OTP not issued to the user/session.
+  4. Check if OTP validation endpoint requires session tokens or user identifiers matching OTP request.
 
-2. **Modify parameters to test bypasses**  
-   - Change `user_id` or `session_id` to other values (e.g., other user IDs).  
-   - Remove or blank the OTP parameter to test default acceptance.  
-   - Modify tokens or related parameters to invalid or empty values.
-
-3. **Resend the request after each modification**  
-   - Observe if OTP validation is bypassed or incorrectly passed.
-
-4. **Try replaying requests with different parameter values or with no OTP**  
-   - Some weak implementations accept requests without validating OTP under certain conditions.
-
-### Pass Criteria  
-Server strictly validates OTP tied to correct user/session and rejects tampered requests.
-
-### Fail Criteria  
-OTP validation can be bypassed by changing parameters or omitting OTP.
-
-### Screenshot  
-- Modified requests with tampered parameters.  
-- Server responses indicating acceptance or failure.
+- **Advanced:**
+  - Tamper with request parameters such as user ID, session ID, or token to test for weak binding.
+  - Attempt OTP reuse across multiple devices or browsers.
 
 ---
 
-## 5. Check OTP user/session binding
+### 5. Test OTP Transmission Security
 
-### Steps
+- **Goal:** Verify OTPs are never transmitted insecurely (e.g., in URLs or logs).
 
-1. **Request OTP for user A**  
-   - Capture request and OTP.
+- **How to test:**
+  1. Intercept network traffic during OTP generation and submission.
+  2. Confirm OTP is not present in URL query parameters or referrer headers.
+  3. Check for OTP leakage in HTTP headers, cookies, or error messages.
+  4. Check if OTPs are sent over HTTPS only.
+  5. Review application logs or error pages (if accessible) for OTP exposure.
 
-2. **Attempt to submit the OTP for user B**  
-   - Modify the OTP submission request changing the user identifier to user B’s ID/email.
-
-3. **Observe if OTP is accepted**  
-   - Successful acceptance means OTP is not bound to the intended user/session.
-
-### Pass Criteria  
-OTP only works for the specific user/session it was generated for.
-
-### Fail Criteria  
-OTP works across users or sessions, leading to account takeover.
-
-### Screenshot  
-- Original OTP request and response for user A.  
-- OTP submission request modified for user B.  
-- Server response indicating acceptance or rejection.
+- **Advanced:**
+  - Test if OTP is cached in browser storage (local/session storage).
+  - Search public paste sites or GitHub repos for accidental OTP leaks (OSINT).
 
 ---
 
-## 6. Check if OTP is transmitted securely
+### 6. Test for OTP Bypass via Logical Flaws or Parameter Tampering
 
-### Steps
+- **Goal:** Discover if OTP verification can be bypassed by manipulating parameters or application logic.
 
-1. **Intercept OTP delivery requests/responses**  
-   - Using Burp Proxy or other tools, check if OTP values are sent in URL parameters or clear-text headers.
+- **How to test:**
+  1. Intercept OTP verification request.
+  2. Modify parameters such as:
+     - OTP code (e.g., blank, `000000`).
+     - Flags or boolean parameters indicating OTP success.
+     - User/session identifiers.
+  3. Attempt to submit verification without OTP or with altered parameters.
+  4. Observe if application bypasses OTP verification or returns success incorrectly.
+  5. Test common default or fallback codes (e.g., `123456`, `999999`).
 
-2. **Check if OTP is sent over HTTPS**  
-   - Ensure all OTP-related requests and responses use HTTPS.
-
-3. **Look for OTP leakage in referer headers, logs, or error messages**  
-   - Check response bodies, error pages, and headers for OTP exposure.
-
-### Pass Criteria  
-OTP is only transmitted securely via POST requests over HTTPS and not leaked in URLs or headers.
-
-### Fail Criteria  
-OTP is exposed in URLs, headers, or transmitted over unencrypted HTTP.
-
-### Screenshot  
-- Captured HTTP requests showing OTP securely transmitted.  
-- Evidence of any OTP leakage.
+- **Advanced:**
+  - Analyze client-side JavaScript for hardcoded OTPs or bypass code.
+  - Attempt to replay older OTP verification requests with modified parameters.
 
 ---
 
-## 7. Verify OTP format and predictability
+### 7. Test OTP Predictability
 
-### Steps
+- **Goal:** Verify if OTP generation is truly random and unpredictable.
 
-1. **Capture multiple OTP values generated in different sessions**  
-   - Request OTP multiple times, capturing each value.
+- **How to test:**
+  1. Generate multiple OTPs in rapid succession.
+  2. Analyze the OTP pattern for predictability or repetition.
+  3. Attempt to guess next OTP based on previous ones.
+  4. Try to reverse engineer OTP algorithm if possible (especially for time-based OTPs).
 
-2. **Analyze OTP patterns**  
-   - Check if OTPs follow predictable sequences (e.g., incremental numbers, repeated patterns).
-
-3. **Attempt to predict next OTP based on observed patterns**  
-   - Use scripting or manual observation.
-
-4. **Try submitting predicted OTPs to test if guessable**  
-   - Use Burp Intruder or manual testing.
-
-### Pass Criteria  
-OTPs are generated using strong randomness with no predictable patterns.
-
-### Fail Criteria  
-OTPs follow easily guessable patterns making brute force easier.
-
-### Screenshot  
-- List of captured OTPs showing randomness or pattern.  
-- Results of testing predicted OTPs.
+- **Advanced:**
+  - If TOTP/HOTP is used, check for weak shared secrets.
+  - Use tools like `oathtool` to generate OTP codes from intercepted secrets.
+  - Monitor for leakage of seed or secret keys.
 
 ---
 
-# Notes:
+### 8. Test OTP Delivery to Unauthorized Recipients
 
-- Always test with valid accounts or test accounts to avoid legal issues.
-- Use Burp Suite extensions like **"Burp Suite OTP"** or **"OTP intercept"** to automate OTP capture and reuse.
-- Consider multi-factor authentication bypass vectors in complex systems.
+- **Goal:** Ensure OTPs are only sent to the verified user's contact methods.
+
+- **How to test:**
+  1. Attempt to change delivery target parameters (phone number/email) in OTP generation request.
+  2. Verify OTP is sent only to the legitimate, registered contact.
+  3. Attempt to request OTP for random or non-existent users.
+  4. Test if OTP can be triggered for arbitrary phone numbers or emails (account takeover risk).
+
+- **Advanced:**
+  - Try social engineering or API fuzzing to enumerate valid user contacts.
+  - Test SMS gateway or email service for rate limiting and message interception.
 
 ---
+
+## Pass Criteria
+
+- OTPs cannot be brute-forced due to rate limiting or lockout.
+- OTPs expire as per specification and cannot be reused.
+- OTPs are bound strictly to the user/session that requested them.
+- OTPs are transmitted securely and not leaked in URLs, headers, or logs.
+- No logical or parameter tampering bypass is possible.
+- OTP generation is sufficiently random and unpredictable.
+- OTPs are sent only to legitimate users, preventing unauthorized delivery.
+
+---
+
+## Fail Criteria
+
+- No or weak rate limiting on OTP submissions.
+- OTP reuse or replay allowed.
+- OTPs accepted for wrong users or sessions.
+- OTPs leaked in URLs, headers, logs, or insecure channels.
+- Logical flaws allow bypassing OTP verification.
+- Predictable or guessable OTP patterns.
+- OTPs deliverable to arbitrary or attacker-controlled contacts.
+
+---
+
+## Screenshots to Collect
+
+- Burp Intruder attack logs showing OTP brute force attempts.
+- Expired OTP submission and server rejection response.
+- OTP reuse attempts and server responses.
+- Modified requests showing tampering attempts and results.
+- Network captures showing OTP transmission security.
+- Evidence of unauthorized OTP delivery attempts.
+
+---
+
+## Tools Recommended
+
+- Burp Suite (Proxy, Intruder, Repeater)
+- OWASP ZAP
+- Custom brute force scripts (Python, bash)
+- `oathtool` for TOTP analysis
+- OSINT tools for contact enumeration
+
+---
+
+## References
+
+- OWASP Testing Guide – [OTP and MFA Testing](https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/13-Testing_for_Multi-Factor_Authentication)
+- RFC 6238 - TOTP: Time-Based One-Time Password Algorithm
+- Burp Suite Documentation and Extensions
 
