@@ -1,0 +1,217 @@
+# ✅ Phase 13.2 – JWT Security Checks (Complete Step-by-Step Guide)
+
+---
+
+## Objective
+Detect JWT weaknesses including acceptance of the `none` algorithm, signature bypass, weak secrets, token forgery, token reuse, privilege escalation, and sensitive data exposure.
+
+---
+
+## Prerequisites
+- Burp Suite (Community or Pro)
+- jwt.io (https://jwt.io/)
+- JWT tooling (e.g., [jwt_tool](https://github.com/ticarpi/jwt_tool), Postman, curl)
+- Access to a valid JWT token from the target application
+
+---
+
+## Steps
+
+### 1. **Capture a Valid JWT Token**
+
+- Log in or authenticate with the target application.
+- In **Burp Suite Proxy → HTTP History**, locate a request containing the JWT token:
+  - Typically in `Authorization: Bearer <token>` header
+  - Or in cookies/localStorage/sessionStorage (check browser DevTools → Application tab)
+- Copy the full JWT token for offline analysis.
+
+---
+
+### 2. **Decode JWT Token**
+
+- Navigate to https://jwt.io/
+- Paste the token in the debugger.
+- Review:
+  - Header fields (`alg`, `typ`, `kid`)
+  - Payload claims (`iss`, `sub`, `aud`, `exp`, `iat`, `roles`, `permissions`, PII, etc.)
+- Check for sensitive data disclosure (e.g., passwords, PII, internal IDs).
+
+---
+
+### 3. **Test for `alg:none` Acceptance**
+
+- Decode JWT header and change `"alg"` to `"none"`.
+- Remove the signature portion of the JWT (the third dot-separated section).
+- Reconstruct the JWT token as:  
+  `base64UrlEncode(header) + "." + base64UrlEncode(payload) + "."`
+- Replace the original token with this modified token in the `Authorization` header or relevant place.
+- Send the request to the application.
+- **If access is granted or token accepted → Vulnerability confirmed.**
+
+---
+
+### 4. **Test for Algorithm Confusion (RSA vs HMAC)**
+
+- If original token uses asymmetric algorithm (e.g., `RS256`):
+  - Replace header `"alg"` field with `HS256`.
+  - Use the server's **public key** as the secret key to resign the token.
+    - Export the public key from the application or certificate (via browser or `openssl s_client`).
+  - Use a JWT signing tool to generate a new token signed with HS256 and the public key as secret.
+- Send the modified token.
+- **If token accepted → Vulnerability confirmed.**
+
+---
+
+### 5. **Test Weak Secret Key (Brute Force Attack)**
+
+- Use `jwt_tool` or similar offline tools.
+- Provide captured JWT token and known public keys.
+- Attempt brute forcing weak secrets (common passwords, defaults).
+- Example usage:  
+  ```bash
+  jwt_tool.py --jwt <token> --brute /path/to/wordlist.txt
+
+    If secret key is discovered → Vulnerability confirmed.
+
+6. Test Token Forgery and Claim Manipulation
+
+    Modify payload claims, for example:
+
+        exp (expiration) → extend expiration to future date/time.
+
+        role or permissions → escalate privileges (e.g., user to admin).
+
+    Re-sign the token:
+
+        If you have the secret key (from previous step), resign with it.
+
+        If not, try signing with alg:none or test if server ignores signature.
+
+    Replace token and send the request.
+
+    If request succeeds with modified claims → Vulnerability confirmed.
+
+7. Test Token Expiration and Revocation
+
+    Confirm token expiration (exp) claim by checking UNIX timestamp.
+
+    Wait for token expiration or create a token with an expired timestamp.
+
+    Replay request with expired token.
+
+    If access is still granted → Vulnerability confirmed.
+
+    If application supports token revocation endpoint, attempt to revoke a valid token.
+
+    Replay request with revoked token.
+
+    If access is still granted → Vulnerability confirmed.
+
+8. Test Token Reuse and Replay
+
+    Use the same valid token from a previous request multiple times.
+
+    Check if application allows multiple parallel sessions or token reuse without re-authentication.
+
+    Use Burp Intruder to automate rapid reuse or replay tokens.
+
+    If unauthorized reuse is possible → Vulnerability confirmed.
+
+9. Test Audience (aud) and Issuer (iss) Claim Validation
+
+    Modify aud claim to attacker-controlled value or invalid audience.
+
+    Modify iss claim similarly.
+
+    Resign token properly if possible.
+
+    Send request with manipulated token.
+
+    If request accepted → Vulnerability confirmed.
+
+10. Test Token Signature Validation Skips
+
+    Modify JWT token by injecting extra padding, whitespace, or control characters.
+
+    Check if token still passes signature validation.
+
+    Try encoding payload in different base64 variants or non-standard padding.
+
+    If signature validation bypassed → Vulnerability confirmed.
+
+11. Check for Sensitive Information in JWT
+
+    Analyze JWT claims for sensitive information, such as:
+
+        User credentials (password hashes, tokens)
+
+        Personally identifiable information (PII)
+
+        Internal system paths or configuration details
+
+    Document and report any sensitive data exposure.
+
+12. Test JWT Token Transmission Security
+
+    Verify that JWT tokens are transmitted only over HTTPS.
+
+    Intercept traffic with Burp Suite:
+
+        Confirm tokens never appear in URL query strings.
+
+        Confirm tokens are sent only in Authorization headers or secure cookies.
+
+    Test if JWT tokens are stored in localStorage or sessionStorage, exposing them to XSS risk.
+
+Pass Criteria
+
+    JWT tokens are signed with strong algorithms (e.g., RS256 or ES256).
+
+    alg:none tokens are rejected.
+
+    Tokens with manipulated claims or signatures are rejected.
+
+    Tokens expire properly and revoked tokens are denied.
+
+    No sensitive data exposed in token payload.
+
+    Token transmission and storage follow security best practices.
+
+Fail Criteria
+
+    Acceptance of alg:none tokens.
+
+    Algorithm confusion acceptance.
+
+    Weak or brute-forceable secret keys.
+
+    Tokens with modified claims accepted.
+
+    Expired or revoked tokens accepted.
+
+    Sensitive data disclosure via JWT.
+
+    Tokens sent insecurely (over HTTP or in URLs).
+
+Screenshots to Capture
+
+    Original valid JWT token in request headers.
+
+    Modified JWT tokens (alg:none, manipulated claims) in requests.
+
+    Application responses showing acceptance or rejection of modified tokens.
+
+    JWT token decoded on https://jwt.io/ showing sensitive info or weak claims.
+
+    Results of brute force attack against JWT secrets.
+
+    Evidence of token replay or expiration bypass.
+
+References
+
+    JWT Attack Walkthrough - NCC Group
+
+    jwt_tool GitHub Repository
+
+    OWASP JWT Cheat Sheet
+
