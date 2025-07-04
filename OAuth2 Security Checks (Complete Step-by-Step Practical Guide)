@@ -1,0 +1,357 @@
+✅ Phase 13.1 – OAuth2 Security Checks (Complete Step-by-Step Practical Guide)
+1. Discover OAuth2 Endpoints and Flow Type
+
+Objective: Identify OAuth2 URLs and determine which OAuth2 flow(s) the app uses.
+
+Steps:
+
+    Open the application login page or OAuth sign-in page.
+
+    Open Burp Suite (Community or Pro), go to Proxy → Intercept, and turn intercept ON.
+
+    Start a login or OAuth authorization flow:
+
+        Click "Login with OAuth" or trigger OAuth login.
+
+    In Burp intercept, examine the request URL:
+
+        Look for parameters like response_type, client_id, redirect_uri.
+
+        Note the authorization endpoint URL (usually /authorize or /oauth2/authorize).
+
+    Forward the request.
+
+    Capture the token exchange request:
+
+        Look for POST to /token endpoint.
+
+        Check if parameters include grant_type=authorization_code or other flow types (password, client_credentials, etc).
+
+    In Burp Proxy → HTTP history, look for requests to endpoints /authorize, /token, /revoke, /introspect.
+
+    To confirm flows, check parameters:
+
+        response_type=code → Authorization Code flow.
+
+        response_type=token → Implicit flow.
+
+        grant_type=password → Resource Owner Password Credentials flow.
+
+        grant_type=client_credentials → Client Credentials flow.
+
+    Optionally, request /.well-known/openid-configuration endpoint:
+
+        Open terminal, run:
+
+        curl -s https://<target-domain>/.well-known/openid-configuration | jq
+
+        This shows supported endpoints and features.
+
+2. Test Redirect URI Validation
+
+Objective: Check if redirect URIs are properly validated to prevent open redirects.
+
+Steps:
+
+    In Burp Proxy, intercept the authorization request with parameters:
+
+        response_type=code
+
+        client_id=<client-id>
+
+        redirect_uri=https://valid-uri.com/callback
+
+    Modify redirect_uri to malicious URLs:
+
+        https://attacker.com
+
+        https://victim.com.evil.com
+
+        https://victim.com#attacker.com
+
+        //attacker.com
+
+    Forward the modified request.
+
+    Complete the OAuth flow (simulate user consent if needed).
+
+    Observe the final redirection URL in browser:
+
+        Does it redirect to your attacker URL?
+
+        If yes, vulnerability confirmed.
+
+    Repeat with URL-encoded versions:
+
+        Change redirect_uri to https%3A%2F%2Fattacker.com
+
+    Try modifying the path or query string in the redirect URI to bypass exact matching.
+
+3. Capture and Analyze Tokens
+
+Objective: Ensure tokens are not leaked insecurely and are well-formed.
+
+Steps:
+
+    Complete OAuth flow to obtain tokens.
+
+    In Burp Proxy or browser developer tools:
+
+        Look for tokens in URL parameters, HTTP headers, or response bodies.
+
+    Copy the access token and ID token (if present).
+
+    Visit https://jwt.io/
+
+    Paste the token in the decoder:
+
+        Check payload for sensitive info: email, username, roles, exp, iat.
+
+    Verify token format (JWT or opaque).
+
+    Confirm tokens are sent over HTTPS only.
+
+4. Test PKCE Enforcement (Authorization Code Flow)
+
+Objective: Verify PKCE protects the code exchange process.
+
+Steps:
+
+    Intercept authorization request.
+
+    Remove code_challenge and code_challenge_method parameters completely.
+
+    Forward request.
+
+    Check if authorization code is still granted.
+
+        If yes, PKCE is not enforced → fail.
+
+    Attempt to exchange code with a mismatched code_verifier parameter.
+
+    Attempt code exchange without any code_verifier.
+
+    Confirm server rejects code exchange without valid code_verifier.
+
+5. Test Authorization Code Replay
+
+Objective: Ensure authorization codes are single-use.
+
+Steps:
+
+    Capture a valid authorization code from the authorization flow.
+
+    Use Postman or curl to exchange this code for tokens.
+
+    Example curl command:
+
+    curl -X POST https://<token-endpoint> \
+      -d client_id=<client_id> \
+      -d client_secret=<client_secret> \
+      -d code=<captured_code> \
+      -d grant_type=authorization_code \
+      -d redirect_uri=https://valid-uri.com/callback
+
+    Confirm token received.
+
+    Repeat the exchange request again with the same code.
+
+    If tokens are granted again → fail (code reuse allowed).
+
+6. Test Token Expiry and Revocation
+
+Objective: Check if expired or revoked tokens are rejected.
+
+Steps:
+
+    Obtain access token and refresh token.
+
+    Access a protected resource using the access token.
+
+    Note the expiry time (exp claim in JWT or server docs).
+
+    Wait for token expiry or forcibly revoke token if endpoint exists:
+
+        Use revocation endpoint:
+
+        curl -X POST https://<revocation-endpoint> \
+          -d token=<access_token> \
+          -d token_type_hint=access_token \
+          -d client_id=<client_id> \
+          -d client_secret=<client_secret>
+
+    Attempt to access protected resources with the expired/revoked token.
+
+    If access is granted → fail.
+
+7. Test Scope Enforcement
+
+Objective: Check if users can obtain or use tokens with unauthorized scopes.
+
+Steps:
+
+    Modify token request to request elevated scopes, e.g., admin, write.
+
+    Complete the authorization flow.
+
+    Confirm if token with requested scopes is granted.
+
+    Use token to access endpoints requiring these scopes.
+
+    Try to manipulate JWT token claims (if JWT used):
+
+        Change scope claim to elevated scopes.
+
+    Replay requests with modified token.
+
+    If unauthorized scopes are granted or enforced incorrectly → fail.
+
+8. Check Token Storage Security
+
+Objective: Ensure tokens are stored securely client-side.
+
+Steps:
+
+    In browser developer tools, open:
+
+        Application → LocalStorage
+
+        Application → SessionStorage
+
+        Cookies section
+
+    Identify where access and refresh tokens are stored.
+
+    Verify cookie flags:
+
+        Cookies with tokens should have Secure and HttpOnly flags enabled.
+
+    If tokens stored in LocalStorage or SessionStorage, check for potential XSS risks.
+
+9. Test JWT Signature Validation
+
+Objective: Test for common JWT flaws.
+
+Steps:
+
+    Decode JWT token header; note alg field.
+
+    Modify token header alg field to none.
+
+    Remove signature part of JWT.
+
+    Replay request with modified token.
+
+    If accepted → fail.
+
+    Change alg to HS256 and sign token with server public key as secret.
+
+    Replay token; if accepted → fail (alg confusion).
+
+    Brute force weak secrets offline with tools like jwt_tool using token and public key.
+
+    Modify token claims (exp, role) and replay request.
+
+    If token accepted despite invalid signature or expired claim → fail.
+
+10. Test Refresh Token Rotation
+
+Objective: Verify refresh tokens are single-use.
+
+Steps:
+
+    Use refresh token to obtain a new access token.
+
+    Attempt to use the same refresh token again.
+
+    If accepted → fail.
+
+11. Dynamic Client Registration Testing
+
+Objective: Test if attacker can register malicious OAuth clients.
+
+Steps:
+
+    Check if dynamic client registration endpoint exists (usually /register or /clients).
+
+    Attempt to register a new client with attacker-controlled redirect URIs.
+
+    Use new client credentials to obtain tokens.
+
+    If registration unrestricted or redirect URIs unchecked → fail.
+
+12. Test CSRF Protection on OAuth Authorization Endpoint
+
+Objective: Verify state parameter usage.
+
+Steps:
+
+    Intercept authorization request.
+
+    Check for presence of state parameter.
+
+    Attempt replay without the state parameter.
+
+    Attempt to reuse a fixed state parameter.
+
+    Use Burp Intruder to test for state predictability (e.g., incremental or fixed patterns).
+
+    If no state, or predictable state → fail.
+
+13. Test Introspection and Revocation Endpoints
+
+Objective: Ensure endpoints are secured.
+
+Steps:
+
+    Identify token introspection endpoint (usually /introspect).
+
+    Attempt to introspect tokens without authentication.
+
+    Check if detailed info about tokens or users is leaked.
+
+    Try to revoke tokens that belong to other users.
+
+    If unauthorized access allowed → fail.
+
+14. OIDC Nonce and ID Token Checks
+
+Objective: Test OIDC-specific protections.
+
+Steps:
+
+    Intercept ID Token and decode at jwt.io.
+
+    Check nonce claim is present and unique per authorization request.
+
+    Replay ID token multiple times.
+
+    Check if replayed tokens are accepted.
+
+    Test request and request_uri parameters by modifying their values and resubmitting.
+
+15. SAML Assertions Testing (If Applicable)
+
+Objective: Validate SAML signature and injection protections.
+
+Steps:
+
+    Capture SAML response with Burp.
+
+    Decode SAML XML with SAML Raider.
+
+    Modify SAML assertion XML structure:
+
+        Insert multiple <Assertion> tags.
+
+        Alter signatures.
+
+    Replay altered assertions.
+
+    Test for XML external entity (XXE) injection by adding <!ENTITY ...> declarations.
+
+    Observe server response for info leak or acceptance.
+
+Summary:
+
+Each step is a fully actionable task with commands, locations, expected inputs, and validation criteria. This guide is for anyone with Burp and basic curl/Postman knowledge to follow precisely.
