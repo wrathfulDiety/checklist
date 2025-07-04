@@ -1,0 +1,324 @@
+
+---
+
+```markdown
+# ✅ Phase 2 – Automated Testing
+
+## 🔹 1. Perform Automated Scanning (Burp Suite / Netsparker / ZAP)
+
+**Objective:**  
+Identify common vulnerabilities and misconfigurations using automated scanners while preserving session integrity and application state.
+
+### 🧰 Tools Required:
+- Burp Suite (Pro recommended for active scanning)
+- OWASP ZAP (free alternative)
+- Netsparker / Invicti (optional)
+- Browser (Firefox/Chrome)
+
+---
+
+### 🪜 Steps:
+
+#### 🔸 A. Setup Burp for Automated Scan
+
+1. **Install and Launch Burp Suite.**
+
+2. **Configure Browser Proxy (If not done already):**
+   - Open Firefox → Settings → Network → Manual proxy:
+     - HTTP Proxy: `127.0.0.1`
+     - Port: `8080`
+   - Trust Burp CA Certificate:
+     - Visit `http://burpsuite`
+     - Download → Install in browser → Accept warnings
+
+3. **Log In to Application in Browser (If Gray-Box):**
+   - Navigate to login page.
+   - Submit credentials (use test credentials with sufficient permissions).
+   - Ensure login is reflected in Burp’s HTTP history.
+
+4. **Send Authenticated Request to Scope:**
+   - Go to `HTTP history` → Right-click the authenticated request → `Engagement Tools → Use as Logged In Session`.
+
+5. **Start Crawl + Audit Scan:**
+   - Go to `Dashboard → New Scan → Crawl and Audit`.
+   - Set the **target URL** (e.g., `https://target.com`).
+   - Choose scan configuration:
+     - For full audit: use **"Audit all in-scope items"**
+     - For light scan: use **"Passive only"**
+
+6. **Add Target to Scope:**
+   - `Target → Scope → Add → Include target.com`
+   - Ensure only intended URLs are scanned. Exclude logout, delete, payment pages.
+
+7. **Monitor Scan Progress:**
+   - Watch dashboard issues and crawling queue.
+   - Manually interact with unvisited pages to help crawling.
+   - Use `Logger++` to verify background traffic.
+
+#### 🔸 B. Configure ZAP as an Alternative
+
+1. **Install ZAP and Launch It.**
+
+2. **Set Up Browser Proxy (Same as above).**
+
+3. **Start ‘Automated Scan’ Wizard:**
+   - Input target URL.
+   - Log in via browser and ensure session cookies captured.
+
+4. **Set Context and Session Handling:**
+   - Right-click target → Include in context.
+   - Define login rule and session tokens.
+
+5. **Run Active Scan:**
+   - `Right-click target → Attack → Active Scan`
+
+---
+
+### ✅ Pass Criteria:
+- Scan completes with all endpoints covered (crawl phase complete).
+- All forms, inputs, and parameters tested.
+- Authenticated session persists throughout.
+- No destructive endpoints hit unless explicitly allowed.
+
+### ❌ Fail Criteria:
+- Scanner logs out due to session misconfiguration.
+- Critical flows skipped (e.g., multi-role, hidden input fields).
+- Dangerous operations triggered by scan.
+
+### 📸 Screenshots:
+- Burp Scan configuration
+- Dashboard scan progress
+- Logged in session setting
+- Vulnerabilities reported by Burp/ZAP
+```
+
+---
+
+```markdown
+## 🔹 2. Ensure One Scan per Role (Multi-role Testing)
+
+**Objective:**  
+Test access-level restrictions and privilege boundaries for all available roles.
+
+---
+
+### 🪜 Steps:
+
+1. **Identify Roles from Scope Document or App Behavior:**
+   - Common examples: Guest, User, Manager, Admin, Moderator.
+
+2. **Create Separate Login Sessions for Each Role:**
+   - Login as each role.
+   - Capture login request (Burp → Proxy → HTTP history).
+
+3. **Mark Each Session in Burp:**
+   - Right-click authenticated request for each role.
+   - `Engagement Tools → Use as Logged-in Session`.
+
+4. **Initiate Scan per Role:**
+   - New tab → New scan → Input URL.
+   - Label scans per user role: e.g., `Scan – User`, `Scan – Admin`.
+
+5. **Observe Parameter Differences Across Roles:**
+   - Use `Compare` extension or manual diff to note available functionalities.
+
+6. **Repeat for Mobile/SPA Flows if Present:**
+   - Use mobile emulator and capture token-based flows.
+   - Send each session to its own scan context.
+
+---
+
+### ✅ Pass Criteria:
+- All roles tested individually.
+- No horizontal or vertical privilege escalation missed.
+- Feature parity and restrictions correctly enforced per role.
+
+### ❌ Fail Criteria:
+- Role mixing or access leakage.
+- Authenticated areas accessed by lower-privileged users.
+
+### 📸 Screenshots:
+- Each role’s session in Burp
+- Scan results per role
+- Role-based features comparison
+```
+
+---
+
+````markdown
+## 🔹 3. Run SSL/TLS Security Tests
+
+**Objective:**  
+Evaluate SSL configuration, ciphers, protocol versions, and overall HTTPS security.
+
+---
+
+### 🧰 Tools Required:
+- [`testssl.sh`](https://github.com/drwetter/testssl.sh)
+- [`sslscan`](https://github.com/rbsec/sslscan)
+- Optional: SSL Labs test (browser-based)
+
+---
+
+### 🪜 Steps:
+
+1. **Install testssl.sh**
+   ```bash
+   git clone --depth 1 https://github.com/drwetter/testssl.sh.git
+   cd testssl.sh
+   ./testssl.sh https://target.com
+````
+
+2. **Install and Run sslscan**
+
+   ```bash
+   sudo apt install sslscan
+   sslscan target.com:443
+   ```
+
+3. **Observe for:**
+
+   * SSLv2, SSLv3, TLS 1.0 support
+   * Weak ciphers: RC4, DES, EXPORT
+   * Certificate mismatches or expiry
+   * Missing HSTS headers
+
+4. **Cross-check with [SSL Labs](https://www.ssllabs.com/ssltest/)**
+
+---
+
+### ✅ Pass Criteria:
+
+* Only TLS 1.2 or 1.3 allowed
+* No weak ciphers or insecure renegotiation
+* Valid certificate, proper hostname, HSTS present
+
+### ❌ Fail Criteria:
+
+* SSLv2/3, weak ciphers supported
+* No certificate validation
+* MITM-prone configurations
+
+### 📸 Screenshots:
+
+* `testssl.sh` output
+* `sslscan` summary
+* SSL Labs grade page
+
+````
+
+---
+
+```markdown
+## 🔹 4. Perform Directory and File Bruteforcing (dirb/DirBuster)
+
+**Objective:**  
+Discover hidden files, directories, and misconfigured resources (e.g. backups, dev folders, old admin panels).
+
+---
+
+### 🧰 Tools Required:
+- `dirb`, `gobuster`, `ffuf`, or `DirBuster`
+- Common and technology-specific wordlists (SecLists)
+
+---
+
+### 🪜 Steps:
+
+1. **Use dirb with Generic Wordlist:**
+   ```bash
+   dirb https://target.com /usr/share/wordlists/dirb/common.txt
+````
+
+2. **Use gobuster (Recommended):**
+
+   ```bash
+   gobuster dir -u https://target.com -w /usr/share/seclists/Discovery/Web-Content/raft-medium-directories.txt -t 50 -k
+   ```
+
+3. **Use ffuf (Fastest for fuzzing):**
+
+   ```bash
+   ffuf -u https://target.com/FUZZ -w /usr/share/seclists/Discovery/Web-Content/directory-list-2.3-medium.txt -fc 403,404
+   ```
+
+4. **Platform-specific Wordlists:**
+
+   * For PHP: `phpmyadmin`, `.env`, `config.php`, `test.php`
+   * For .NET: `web.config`, `App_Data`, `trace.axd`
+   * For CMS: Use `CMSMap` + CMS-specific wordlists
+
+---
+
+### ✅ Pass Criteria:
+
+* No sensitive files or directories exposed
+* No dev/staging/admin panels accessible
+
+### ❌ Fail Criteria:
+
+* Discovery of `/backup`, `/admin`, `/test`, `.git/`, `.env`, `debug.log`
+
+### 📸 Screenshots:
+
+* Gobuster/ffuf terminal output
+* HTTP response with valid directory/file
+
+````
+
+---
+
+```markdown
+## 🔹 5. Run Nikto on Host IP / Web Address
+
+**Objective:**  
+Detect common misconfigurations, outdated software, and dangerous files using Nikto’s built-in database.
+
+---
+
+### 🧰 Tools Required:
+- `nikto` (usually pre-installed in Kali Linux)
+- Target URL or IP
+
+---
+
+### 🪜 Steps:
+
+1. **Run Nikto on Domain**
+   ```bash
+   nikto -h https://target.com
+````
+
+2. **Optional: Run on IP**
+
+   ```bash
+   nikto -h https://1.2.3.4
+   ```
+
+3. **Review for:**
+
+   * Outdated server versions (Apache, nginx)
+   * Unprotected directories
+   * Insecure cookies
+   * Script injections or XSS markers
+   * File upload forms or shell upload tests
+
+---
+
+### ✅ Pass Criteria:
+
+* No high-severity issues reported
+* Server software up-to-date
+
+### ❌ Fail Criteria:
+
+* Known CVEs detected
+* Misconfigurations or default credentials found
+
+### 📸 Screenshots:
+
+* Nikto report terminal output
+* Highlighted issues (e.g. `X-Frame-Options` missing)
+
+```
+
