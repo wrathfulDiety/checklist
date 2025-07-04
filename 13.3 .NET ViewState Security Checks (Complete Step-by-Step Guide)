@@ -1,0 +1,161 @@
+# ✅ Phase 13.3 – .NET ViewState Security Checks (Complete Step-by-Step Guide)
+
+---
+
+## Objective
+Test .NET ViewState for sensitive data disclosure, tampering, encryption, MAC validation, and deserialization vulnerabilities that could lead to remote code execution or application logic manipulation.
+
+---
+
+## Prerequisites
+- Burp Suite (Proxy, Repeater, Intruder)
+- ViewStateDecoder (https://github.com/PowerShellMafia/PowerSploit/blob/master/Exfiltration/ViewStateDecoder.ps1) or online tools like https://www.viewstatedecoder.com/
+- .NET Framework knowledge (optional but helpful)
+- Access to a request containing ViewState parameter (usually a hidden form field)
+
+---
+
+## Steps
+
+### 1. **Identify ViewState Parameter in HTTP Requests**
+
+- Use Burp Suite Proxy or browser developer tools to intercept POST or GET requests.
+- Look for the `__VIEWSTATE` parameter:
+  - Usually found as a hidden input in forms:
+    ```html
+    <input type="hidden" name="__VIEWSTATE" id="__VIEWSTATE" value="..." />
+    ```
+  - In POST body or sometimes URL query parameters.
+- Extract the full value of `__VIEWSTATE`.
+
+---
+
+### 2. **Decode the ViewState Payload**
+
+- Copy the `__VIEWSTATE` value.
+- Use one of the following methods to decode:
+  - Paste into https://www.viewstatedecoder.com/ for human-readable decoding.
+  - Use PowerShell script `ViewStateDecoder.ps1`:
+    ```powershell
+    .\ViewStateDecoder.ps1 -InputString "<ViewStateValue>"
+    ```
+- Inspect the decoded contents for:
+  - Hidden fields
+  - Control state
+  - Sensitive data leakage (passwords, secrets, internal server info)
+
+---
+
+### 3. **Check if ViewState Has MAC (Message Authentication Code) Enabled**
+
+- ViewState MAC ensures the data is not tampered.
+- In decoded output, check if MAC validation exists.
+- Alternatively:
+  - Tamper a small part of the ViewState string (change a byte) and resend the request.
+  - Observe server response.
+- **If server accepts tampered ViewState without error → MAC is disabled or broken → Vulnerable.**
+
+---
+
+### 4. **Check for Encryption of ViewState**
+
+- Some applications encrypt ViewState.
+- Decoded content should be gibberish or encrypted if so.
+- If ViewState is not encrypted, sensitive data could be exposed.
+- Attempt to decode and extract data.
+- **If data is readable → Encryption missing or weak.**
+
+---
+
+### 5. **Test for Weak Machine Key or Predictable Keys**
+
+- Many apps use `machineKey` in `web.config` for ViewState signing/encryption.
+- Test for default or weak machine keys by:
+  - Searching public repositories for `machineKey` leaks.
+  - Using known default keys from common sources.
+- Use tools like [ViewStateAnalyzer](https://github.com/BlackCubes/ViewStateAnalyzer) to brute force weak keys.
+
+---
+
+### 6. **Attempt ViewState Tampering and Replay**
+
+- Modify values inside ViewState (e.g., user roles, flags).
+- Re-encode ViewState or use tampered raw string.
+- Replay the request.
+- If server accepts tampered ViewState → Vulnerability confirmed.
+
+---
+
+### 7. **Attempt Deserialization Attack via ViewState**
+
+- When MAC or encryption is disabled or weak, you can try deserialization attacks.
+- Use ysoserial.net (https://github.com/pwntester/ysoserial.net) to generate malicious ViewState payloads:
+  - Pick a gadget chain (e.g., TypeConfuseDelegate, TextFormattingRunProperties).
+  - Generate payload and base64 encode it.
+- Replace `__VIEWSTATE` with malicious payload.
+- Send to server and check for RCE or application crash.
+- Monitor response and server behavior for signs of exploitation.
+
+---
+
+### 8. **Check for ViewState UserKey Protection**
+
+- Some apps implement `ViewStateUserKey` to bind ViewState to user sessions.
+- Check if `ViewStateUserKey` is implemented:
+  - Tamper ViewState from one session and use in another session.
+- **If ViewState is accepted across sessions → Missing `ViewStateUserKey` → Vulnerable to CSRF or replay attacks.**
+
+---
+
+### 9. **Check ViewState MAC Algorithm**
+
+- Determine algorithm used (SHA1, SHA256, etc.).
+- Older algorithms (SHA1) may be weak.
+- This is often visible in `web.config` or inferred from error messages.
+- Report use of weak MAC algorithms.
+
+---
+
+## Pass Criteria
+
+- ViewState is signed with MAC and tampering causes request rejection.
+- ViewState data is encrypted or does not contain sensitive data.
+- Deserialization attacks are prevented (MAC/encryption enforced).
+- `ViewStateUserKey` is implemented to bind ViewState to user sessions.
+- Strong MAC algorithms (SHA256+) used.
+- No default or weak `machineKey` detected.
+
+---
+
+## Fail Criteria
+
+- ViewState accepted after tampering.
+- Sensitive data visible in decoded ViewState.
+- Missing or disabled MAC.
+- Weak or default `machineKey`.
+- Vulnerable to deserialization attacks.
+- ViewState accepted across user sessions (missing `ViewStateUserKey`).
+- Use of weak MAC algorithms.
+
+---
+
+## Screenshots to Capture
+
+- HTTP request showing `__VIEWSTATE` parameter.
+- Decoded ViewState content exposing sensitive info or flags.
+- Modified ViewState payloads and corresponding server responses.
+- Deserialization payload generation and impact (e.g., error messages, RCE output).
+- Evidence of ViewState reuse across sessions.
+- Configuration leaks or evidence of weak machineKey.
+
+---
+
+## References
+
+- [Microsoft Docs - ViewState](https://docs.microsoft.com/en-us/previous-versions/aspnet/ms972976(v=msdn.10))
+- [ViewStateDecoder Tool](https://github.com/PowerShellMafia/PowerSploit/blob/master/Exfiltration/ViewStateDecoder.ps1)
+- [ysoserial.net for ViewState Deserialization](https://github.com/pwntester/ysoserial.net)
+- [BlackCubes ViewStateAnalyzer](https://github.com/BlackCubes/ViewStateAnalyzer)
+- [OWASP .NET Security Cheat Sheet](https://cheatsheetseries.owasp.org/cheatsheets/ASP.NET_Security_Cheat_Sheet.html)
+
+---
