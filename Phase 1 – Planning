@@ -1,266 +1,300 @@
-## ✅ Phase 1 – Planning
 
-### 🔹 1. Spider the application logging all GET and POST requests (Credentialed if Gray Box)
+````markdown
+# ✅ Phase 1 – Planning
 
-**Objective:**
-Enumerate the complete attack surface by crawling and recording all application endpoints and parameters, authenticated and unauthenticated.
+## 🔹 1. Spider the Application (Log All GET/POST Requests)
 
-**Steps:**
+**Objective:**  
+Enumerate all accessible endpoints, parameters, and input vectors of the application, both authenticated and unauthenticated.
 
-1. **Set Up Intercepting Proxy:**
+### 🧰 Tools Required:
+- [Burp Suite Community/Pro](https://portswigger.net/burp)
+- [OWASP ZAP](https://www.zaproxy.org/)
+- Browser (Firefox/Chrome)
+- Optional: `LinkFinder`, `katana`, `hakrawler`
 
-   * Install and launch **Burp Suite** or **OWASP ZAP**.
-   * In your browser (e.g., Firefox):
+### 🪜 Steps:
 
-     * Open settings > Network Settings > Manual Proxy Configuration.
-     * Set HTTP/HTTPS proxy to `127.0.0.1` and port `8080` (Burp default).
-     * Install Burp/ZAP CA Certificate into your browser to intercept HTTPS traffic.
+1. **Configure Your Browser to Use Burp/ZAP Proxy**
+   - Open browser (e.g., Firefox) → Settings → Network → Manual Proxy:
+     - HTTP Proxy: `127.0.0.1`, Port: `8080` (default for Burp)
+   - Enable HTTPS interception:
+     - Visit `http://burpsuite` and install the Burp CA certificate.
+     - In Firefox, go to `Settings → Certificates → View Certificates → Authorities → Import` the Burp certificate.
 
-2. **Enable Interception & Open Target App:**
+2. **Intercept and Browse the App**
+   - Start with unauthenticated browsing.
+   - For gray-box tests:
+     - Log in using valid credentials.
+     - Ensure session cookies are captured in Burp Proxy → HTTP History.
+   - Visit all application pages, trigger forms, filters, dropdowns, and dynamic content.
 
-   * Start a clean browser session and navigate through every page.
-   * Log in if it’s a gray-box test and you have credentials.
-   * Perform manual browsing: click all links, fill forms, submit queries, trigger all features.
+3. **Use Burp’s Crawler/Spider**
+   - Go to `Dashboard → New Scan → Crawl and Audit`.
+   - Set the scope to `https://target.com`.
+   - Ensure cookies/sessions are maintained:
+     - Capture a login request → Right-click → `Engagement Tools → Use as logged-in session`.
 
-3. **Run Burp Spider/Crawler:**
+4. **Export All Endpoints**
+   - Open `Target → Site Map → Right-click target → Save items` to store all discovered endpoints.
 
-   * Go to **Burp → Dashboard → Crawl and Audit**.
-   * Add the target URL.
-   * If authenticated, **use an authenticated session cookie**:
+5. **Use Additional JS Crawlers**
+   ```bash
+   # Install and run LinkFinder (for JS endpoint discovery)
+   git clone https://github.com/GerbenJavado/LinkFinder.git
+   python3 linkfinder.py -i https://target.com/app.js -o cli
+````
 
-     * Capture it in an intercepted request and mark it in Burp under **Project Options → Sessions**.
-   * Use Burp's browser or Repeater to trigger complex JS-based pages.
+6. **Record API Traffic**
 
-4. **Log All Requests:**
+   * Use mobile emulator traffic routing via Burp/ZAP for mobile applications.
+   * Capture WebSocket and GraphQL endpoints manually from browser Dev Tools.
 
-   * Go to **HTTP History (Burp Proxy Tab)** or **Site Map**.
-   * Export all GET/POST requests with parameters.
+### ✅ Pass Criteria:
 
-**Advanced Notes:**
+* All reachable pages, parameters, and entry points are listed including:
 
-* Use **JS-parser-based crawlers** for SPAs:
+  * Authenticated/unauthenticated areas
+  * Web APIs (REST, GraphQL)
+  * Mobile endpoints (if applicable)
 
-  * Tools like `LinkFinder`, `hakrawler`, `waybackurls`, or `katana`.
-* For mobile apps, configure emulator to use Burp proxy and monitor API requests.
+### ❌ Fail Criteria:
 
-**Pass Criteria:**
+* Missed endpoints due to incomplete crawl
+* Pages inaccessible due to session expiry or improper cookie handling
 
-* All application paths (static/dynamic) are logged, including hidden API endpoints, JS-initiated calls, mobile endpoints, etc.
+### 📸 Screenshots:
 
-**Fail Criteria:**
+* Proxy settings in browser
+* Burp’s HTTP History with captured endpoints
+* Crawling session summary
 
-* Missed URLs, APIs, or role-specific pages.
-* Incomplete spidering due to authentication gaps or JS-heavy content.
-
-**Screenshots to Capture:**
-
-* Proxy configuration screen.
-* Spider settings and crawl scope.
-* Full list of captured URLs and parameters from Burp/ZAP.
+````
 
 ---
 
-### 🔹 2. Fingerprint the Application & Server Stack
+```markdown
+## 🔹 2. Fingerprint the Application and Server Stack
 
-**Objective:**
-Identify all components (server, CMS, frameworks, JS libraries, plugins, versions) for targeting known vulnerabilities.
+**Objective:**  
+Identify all back-end and front-end technologies, libraries, platforms, frameworks, and versions to map known CVEs and attack surfaces.
 
-**Steps:**
+### 🧰 Tools Required:
+- [Wappalyzer](https://www.wappalyzer.com/)
+- [BuiltWith](https://builtwith.com/)
+- [WhatWeb](https://github.com/urbanadventurer/WhatWeb)
+- [Nmap](https://nmap.org/)
+- [Retire.js](https://retirejs.github.io/retire.js/)
+- [Burp Suite]
 
-1. **Run Wappalyzer:**
+### 🪜 Steps:
 
-   * Install browser extension or use CLI `wappalyzer-cli https://target.com`.
-
-2. **Use BuiltWith & Netcraft:**
-
-   * Visit [builtwith.com](https://builtwith.com/) or [netcraft.com](https://www.netcraft.com/) and input the domain.
-
-3. **Manual Header Analysis:**
-
-   * Open Burp → Proxy → HTTP History.
-   * Inspect `Server`, `X-Powered-By`, `Set-Cookie`, and custom headers for tech leakage.
-
-4. **Scan with Nmap:**
-
-   ```bash
-   nmap -sV -p- -Pn target.com
-   ```
-
-5. **Run WhatWeb or Nikto:**
-
-   ```bash
-   whatweb -a 3 https://target.com
-   nikto -h https://target.com
-   ```
-
-6. **Enumerate JavaScript Libraries:**
-
-   * Download all `.js` files from `/assets`, `/js`, etc.
-   * Use `retire.js` CLI:
-
+1. **Use Wappalyzer or BuiltWith**
+   - Browser Extension: Install Wappalyzer → Visit the target site → Observe tech stack.
+   - Or:
      ```bash
-     retire --path ./downloaded-js/
+     whatweb https://target.com
      ```
 
-7. **Detect CMS:**
+2. **Analyze HTTP Headers in Burp**
+   - Look for:
+     - `Server`, `X-Powered-By`, `X-AspNet-Version`, `X-Drupal-Cache`, etc.
+     - Framework-specific cookies (e.g., `PHPSESSID`, `JSESSIONID`, `ASP.NET_SessionId`)
 
-   * Use `wpscan` for WordPress:
+3. **Scan with Nmap for Open Ports and Versions**
+   ```bash
+   nmap -sV -p- -Pn target.com
+````
+
+4. **Run Retire.js for JS Library Vulnerabilities**
+
+   ```bash
+   retire --path ./js-files/  # Crawl and download .js assets first
+   ```
+
+5. **Detect CMS and Plugins**
+
+   * For WordPress:
 
      ```bash
      wpscan --url https://target.com --enumerate p
      ```
-   * Use `cmseek` for other CMS types.
+   * For general CMS:
 
-**Advanced Fingerprinting:**
+     * Use [CMSeek](https://github.com/Tuhinshubhra/CMSeeK)
 
-* Analyze WebSocket handshake responses.
-* Check favicon hash (`favicon.ico`) using Shodan:
+6. **Inspect Favicon Hash (Shodan Lookup)**
 
-  ```bash
-  curl https://target.com/favicon.ico | sha1sum
-  ```
+   ```bash
+   curl https://target.com/favicon.ico | sha1sum
+   ```
 
-**Pass Criteria:**
+### ✅ Pass Criteria:
 
-* Tech stack, CMS, versions, and plugins/libraries are identified accurately.
+* Clear listing of:
 
-**Fail Criteria:**
+  * Server stack (Apache, NGINX, IIS)
+  * Language (PHP, Java, .NET, Node.js)
+  * CMS and plugins
+  * JS libraries and versions
 
-* Fingerprinting blocked by WAF or missed due to obfuscation.
+### ❌ Fail Criteria:
 
-**Screenshots:**
+* Obfuscated or unknown stack
+* Unverified component versions
 
-* Header responses showing stack.
-* JS version leak.
-* Output from tools like WhatWeb/Nmap/Wappalyzer.
+### 📸 Screenshots:
+
+* Output from WhatWeb/Nmap
+* Headers from Burp HTTP history
+* Wappalyzer screenshot
+
+````
 
 ---
 
-### 🔹 3. Research Custom Test Cases for Identified Stack
+```markdown
+## 🔹 3. Research Custom Test Cases Based on Identified Stack
 
-**Objective:**
-Add tech-specific attack scenarios to the testing checklist.
+**Objective:**  
+Map all known vulnerabilities, CVEs, and exploit paths against the detected technologies, adding custom tests to your checklist.
 
-**Steps:**
+### 🪜 Steps:
 
-1. **Search CVEs for Each Tech Component:**
+1. **Lookup CVEs for Each Component**
+   - Use:
+     - [CVE.Mitre.org](https://cve.mitre.org/)
+     - [Exploit-DB](https://www.exploit-db.com/)
+     - [Vulners](https://vulners.com/)
 
-   * Use `https://cve.mitre.org` or `https://www.exploit-db.com/` with CMS/library version.
+2. **Search GitHub for Reported Security Issues**
+   ```bash
+   https://github.com/<tech-library>/issues?q=is:issue+security
+````
 
-2. **Search GitHub Issues for Tech Repos:**
-
-   * For JS libraries/frameworks used in-app:
-
-     ```bash
-     https://github.com/<library>/issues?q=security
-     ```
-
-3. **Enumerate Misconfigurations:**
-
-   * Look up OWASP misconfiguration guides for stack (e.g., `django`, `express`, `struts`).
-   * Search for recent zero-days or default admin panel exposures (e.g., `/admin`, `/actuator`, `/env`).
-
-4. **Add Stack-Specific Tests:**
+3. **Look Up OWASP Guidance for Each Stack**
 
    * Example:
 
-     * If Laravel is used: Check `.env` disclosure.
-     * If Angular/React is used: Look for DOM-based XSS in components.
-     * If jQuery <3.5: Look for known `html()` injection bugs.
+     * Laravel: `.env` exposure
+     * WordPress: `wp-config.php`, `debug.log`
+     * React/Angular: DOM-based XSS risks
 
-**Pass Criteria:**
+4. **Add Specific Test Cases**
 
-* Custom test cases added for each tech component (version-specific exploits, bypasses).
+   * E.g.:
 
-**Fail Criteria:**
+     * Node.js Express: test for prototype pollution
+     * Apache Struts: RCE via crafted Content-Type headers
 
-* Stack tested generically without targeted exploitation.
+5. **Bookmark Offensive Tools/PoCs**
 
-**Screenshots:**
+   * Tools for each stack:
 
-* CVE or GitHub PoC page for a discovered stack component.
+     * CMS: `wpscan`, `droopescan`
+     * Laravel: `.env` grabber
+     * Java: `ysoserial`, Log4Shell tests
 
----
+### ✅ Pass Criteria:
 
-### 🔹 4. Map Business-Critical Functionalities
+* Custom test cases are added based on stack-specific misconfigs and CVEs.
 
-**Objective:**
-Identify high-value business features for deeper manual analysis.
+### ❌ Fail Criteria:
 
-**Steps:**
+* Generic testing approach without targeted stack-specific tests
 
-1. **Manually Analyze User Flows:**
+### 📸 Screenshots:
 
-   * Create user journeys for:
+* CVE PoC pages
+* GitHub issues showing relevant bugs
+* Local test case file additions
 
-     * Login, registration
-     * Checkout, purchase
-     * Fund transfer, booking, etc.
-
-2. **Classify Features:**
-
-   * Critical: payment, orders, coupons, gift cards
-   * Sensitive: profile update, password change
-   * Moderate: dashboard UI, static pages
-
-3. **Document Critical Parameters:**
-
-   * Note down all form fields and URL parameters involved.
-
-4. **Visual Mapping:**
-
-   * Create flowcharts or diagrams for logic (optional).
-   * Example: Cart → Coupon Apply → Payment → Confirm
-
-**Pass Criteria:**
-
-* Key flows and parameters are clearly defined for later fuzzing or logic manipulation.
-
-**Fail Criteria:**
-
-* Incomplete understanding of core flows.
-
-**Screenshots:**
-
-* Screen recording or captures of each critical workflow.
-* Annotated user journey steps.
+````
 
 ---
 
-### 🔹 5. Eliminate Dangerous Functionalities from Automated Scanning
+```markdown
+## 🔹 4. Map Business-Critical Functionalities
 
-**Objective:**
-Avoid triggering destructive or sensitive actions during automated scans.
+**Objective:**  
+Identify features that are integral to the business (e.g. payments, user data changes, role switching) and are high-value targets for logic flaws.
 
-**Steps:**
+### 🪜 Steps:
 
-1. **Identify Risky Functions:**
+1. **Create a List of Core Use Cases:**
+   - Login, registration, account management
+   - Checkout, payment gateway, invoices
+   - Rewards, coupons, subscriptions
+   - Admin/user roles, permissions
 
-   * `delete`, `submit payment`, `reset`, `deactivate`, `report`, etc.
+2. **Test Each Role:**
+   - Enumerate actions for:
+     - Normal user
+     - Admin
+     - Guest (unauthenticated)
 
-2. **Mark These in Burp Scope as Excluded:**
+3. **Analyze All Parameters Used in Critical Flows:**
+   - Examples:
+     - `amount=`, `price=`, `coupon=`, `user_id=`, `email=`
 
-   * **Target → Scope → Exclude from Scope**
-   * Also add relevant keywords in Burp scanner “Passive only” settings.
+4. **Create User Journey Maps (Optional Visuals):**
+   - Tools: `draw.io`, `Whimsical`, or GitHub mermaid syntax
 
-3. **Disable JavaScript/Active scanning temporarily for these paths.**
+5. **Mark Each Function for Further Testing (Logic Flaws, IDOR, etc.)**
 
-4. **If using other tools (e.g., ZAP, Netsparker):**
+### ✅ Pass Criteria:
+- List of all critical flows and components with parameters for each
+- Role-based mapping completed
 
-   * Define custom scripts or use regex exclusion.
+### ❌ Fail Criteria:
+- Missed business features or functionality tied to money/privileges
 
-**Pass Criteria:**
-
-* Dangerous functions are not hit by active scanners.
-
-**Fail Criteria:**
-
-* App data modified, payments processed, or user accounts affected due to misconfigured scan.
-
-**Screenshots:**
-
-* Burp scope with exclusions.
-* Marked dangerous endpoints.
+### 📸 Screenshots:
+- Screens showing flow (add to cart → checkout → confirm)
+- Notes or diagrams of business logic
+````
 
 ---
 
+```markdown
+## 🔹 5. Eliminate Dangerous Functionalities from Automated Scanning
+
+**Objective:**  
+Prevent automated tools (Burp/ZAP/Netsparker) from triggering sensitive functions (e.g. payment, delete, logout).
+
+### 🪜 Steps:
+
+1. **Identify Risky Endpoints:**
+   - Look for:
+     - `delete`, `payment`, `logout`, `reset`, `submit`, `finalize`
+   - Review:
+     - Burp’s Site Map → Right-click → Highlight these endpoints.
+
+2. **Exclude from Scanner Scope:**
+   - In Burp:
+     - `Target → Scope → Exclude from scope`
+   - Or:
+     - Use custom passive scan profile → deselect Active Scanning for sensitive URLs
+
+3. **Mark Dangerous Parameters:**
+   - Add regex filters or tag parameters like `?delete=true` for manual review only.
+
+4. **ZAP:**
+   - Use `Context → Exclude from context` or `Scan Policy → Remove risky categories`.
+
+5. **Use Staging/Mock Data Where Possible**
+
+### ✅ Pass Criteria:
+- All sensitive operations excluded from active automated scans
+
+### ❌ Fail Criteria:
+- Application logic is altered or destructive actions executed during scan
+
+### 📸 Screenshots:
+- Burp/ZAP scope settings
+- Highlighted sensitive endpoints
+```
+
+---
+
+Would you like me to format **Phase 2 – Automated Testing** next in the same style?
